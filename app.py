@@ -8,7 +8,7 @@ import pypdf
 st.set_page_config(page_title="과학 탐구 수업 & 교-수-평-기 설계 비서", page_icon="🧪", layout="wide")
 
 # ==========================================
-# 🔄 외부 데이터 캐싱
+# 🔄 외부 데이터 캐싱 (속도 최적화)
 # ==========================================
 @st.cache_data(ttl=86400)
 def fetch_guide_data():
@@ -20,7 +20,7 @@ def fetch_guide_data():
         texts = [el.get_text(strip=True) for el in soup.select('p, div, td') if len(el.get_text(strip=True)) > 15]
         return "\n".join(texts[:3]) if texts else "2022 개정 깊이있는 학습 지침"
     except Exception:
-        return "2022 개정 깊이있는 학습 지침"
+        return "2022 개정 깊이있는 학습 및 질문 중심 수업 지침"
 
 @st.cache_data(ttl=86400)
 def fetch_steam_data():
@@ -69,7 +69,7 @@ st.title("🧪 중학교 과학 질문 중심 수업 설계 비서")
 st.caption("교과서 중심 | 2022 개정 깊이 있는 학습 | 질문 중심 Scaffolding | 교-수-평-기 일체화")
 
 if not api_key:
-    st.info("👈 왼쪽 사이드바에 새 Gemini API Key를 입력하세요.")
+    st.info("👈 왼쪽 사이드바에 Gemini API Key를 입력하세요.")
     st.stop()
 
 SYSTEM_PROMPT = """
@@ -110,16 +110,19 @@ if prompt := st.chat_input("교과서 단원명이나 다루고 싶은 주제를
         context_payload += f"\n\n[참고 STEAM]: {steam_context[:500]}"
 
     with st.chat_message("assistant"):
-        with st.spinner("⚡ 답변을 작성 중입니다..."):
+        with st.spinner("⚡ 초고속 모델로 수업을 구성하는 중입니다..."):
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(
-                    model_name='gemini-1.5-flash',
-                    system_instruction=SYSTEM_PROMPT
-                )
-                response = model.generate_content(context_payload)
                 
+                # 🎯 호환성을 위해 최신 표준 모델 지원 방식으로 순차 자동 시도
+                try:
+                    model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=SYSTEM_PROMPT)
+                    response = model.generate_content(context_payload)
+                except Exception:
+                    model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=SYSTEM_PROMPT)
+                    response = model.generate_content(context_payload)
+
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
             except Exception as e:
-                st.error(f"API 호출 오류 발생: {e}\n\n👉 API Key를 다시 확인해 주세요!")
+                st.error(f"API 호출 오류 발생: {e}\n\n👉 API Key 입력 상태나 네트워크 상태를 다시 확인해 주세요!")
