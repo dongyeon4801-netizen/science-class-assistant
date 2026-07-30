@@ -3,6 +3,7 @@ import google.generativeai as genai
 import requests
 from bs4 import BeautifulSoup
 import pypdf
+import datetime
 
 # 페이지 설정
 st.set_page_config(page_title="과학 탐구 수업 & 교-수-평-기 설계 비서", page_icon="🧪", layout="wide")
@@ -37,9 +38,53 @@ def fetch_steam_data():
     except Exception:
         return "중학교 과학 교과중심 STEAM 교수학습자료"
 
+# ==========================================
+# 💾 세션 상태 및 채팅 히스토리 관리
+# ==========================================
+if "chat_history_list" not in st.session_state:
+    st.session_state.chat_history_list = {} # { chat_id: {"title": ..., "messages": [...] } }
+
+if "current_chat_id" not in st.session_state:
+    st.session_state.current_chat_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state.chat_history_list[st.session_state.current_chat_id] = {
+        "title": "새 대화",
+        "messages": []
+    }
+
 # 사이드바 설정
 st.sidebar.title("⚙️ 설정 및 외부 자료")
 api_key = st.sidebar.text_input("Gemini API Key 입력", type="password")
+
+# ➕ 새 채팅 버튼
+if st.sidebar.button("➕ 새 대화 시작하기", use_container_width=True):
+    new_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state.current_chat_id = new_id
+    st.session_state.chat_history_list[new_id] = {
+        "title": "새 대화",
+        "messages": []
+    }
+    st.rerun()
+
+# 🗂️ 지난 대화 목록 선택
+st.sidebar.markdown("---")
+st.sidebar.subheader("🗂️ 대화 기록 목록")
+
+chat_ids = list(st.session_state.chat_history_list.keys())
+chat_titles = [st.session_state.chat_history_list[cid]["title"] for cid in chat_ids]
+
+if chat_ids:
+    selected_index = chat_ids.index(st.session_state.current_chat_id) if st.session_state.current_chat_id in chat_ids else 0
+    selected_chat_title = st.sidebar.radio(
+        "저장된 대화 선택",
+        options=chat_titles,
+        index=selected_index,
+        label_visibility="collapsed"
+    )
+    # 선택한 대화로 ID 변경
+    for cid in chat_ids:
+        if st.session_state.chat_history_list[cid]["title"] == selected_chat_title:
+            st.session_state.current_chat_id = cid
+            break
 
 # 📚 교과서 PDF 업로드
 st.sidebar.markdown("---")
@@ -89,15 +134,20 @@ SYSTEM_PROMPT = """
 3단계: [교-수-평-기 일체화 패키지] (활동지, 교사 가이드, 루브릭, 세특 예시문)를 완성한다.
 """
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# 현재 활성화된 채팅 메시지 가져오기
+current_messages = st.session_state.chat_history_list[st.session_state.current_chat_id]["messages"]
 
-for msg in st.session_state.messages:
+# 대화 내용 표시
+for msg in current_messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 if prompt := st.chat_input("교과서 단원명이나 다루고 싶은 주제를 입력하세요..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    # 첫 질문일 경우 채팅 제목 변경
+    if len(current_messages) == 0:
+        st.session_state.chat_history_list[st.session_state.current_chat_id]["title"] = prompt[:15] + "..."
+
+    current_messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
@@ -113,16 +163,11 @@ if prompt := st.chat_input("교과서 단원명이나 다루고 싶은 주제를
         with st.spinner("⚡ 초고속 모델로 수업을 구성하는 중입니다..."):
             try:
                 genai.configure(api_key=api_key)
-                
-                # 🎯 호환성을 위해 최신 표준 모델 지원 방식으로 순차 자동 시도
-                try:
-                    model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=SYSTEM_PROMPT)
-                    response = model.generate_content(context_payload)
-                except Exception:
-                    model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=SYSTEM_PROMPT)
-                    response = model.generate_content(context_payload)
+                model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=SYSTEM_PROMPT)
+                response = model.generate_content(context_payload)
 
                 st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
+                current_messages.append({"role": "assistant", "content": response.text})
+                st.rerun()
             except Exception as e:
-                st.error(f"API 호출 오류 발생: {e}\n\n👉 API Key 입력 상태나 네트워크 상태를 다시 확인해 주세요!")
+                st.error(f"API 호출 오류 발생: {e}\n\n👉 새 API Key를 발급받아 입력했는지 확인해 주세요!")
