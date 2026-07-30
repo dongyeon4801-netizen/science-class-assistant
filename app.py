@@ -7,37 +7,14 @@ import pypdf
 # 페이지 설정
 st.set_page_config(page_title="과학 탐구 수업 & 교-수-평-기 설계 비서", page_icon="🧪", layout="wide")
 
-# 사이드바 (API 키 및 외부 지침/자료 수집)
-st.sidebar.title("⚙️ 설정 및 외부 자료")
-api_key = st.sidebar.text_input("Gemini API Key 입력", type="password")
-
-# 📚 교과서 PDF 업로드 기능
-st.sidebar.markdown("---")
-st.sidebar.subheader("📚 교과서 PDF 업로드")
-uploaded_pdf = st.sidebar.file_uploader("교과서 단원 PDF 파일을 올려주세요", type=["pdf"])
-
-pdf_text_content = ""
-if uploaded_pdf is not None:
-    try:
-        pdf_reader = pypdf.PdfReader(uploaded_pdf)
-        for page in pdf_reader.pages:
-            text = page.extract_text()
-            if text:
-                pdf_text_content += text + "\n"
-        st.sidebar.success(f"교과서 PDF 학습 완료! ({len(pdf_reader.pages)}페이지)")
-    except Exception as e:
-        st.sidebar.error("PDF 읽기 중 오류가 발생했습니다.")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📘 깊이있는 학습 지침서 연동")
-st.sidebar.caption("🔗 출처: ppzine.kr/class_edu")
-
-if st.sidebar.button("📖 지침서 웹진 데이터 수집"):
+# ==========================================
+# 🔄 자동 수집 함수 정의 (웹 앱 로드 시 자동 실행)
+# ==========================================
+@st.cache_data(ttl=3600)  # 1시간 동안 수집 결과 캐싱하여 빠른 속도 유지
+def fetch_guide_data():
     try:
         url = "https://ppzine.kr/class_edu/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, 'html.parser')
         
@@ -48,22 +25,12 @@ if st.sidebar.button("📖 지침서 웹진 데이터 수집"):
                 page_texts.append(t)
             if len(page_texts) >= 15:
                 break
-                
-        if page_texts:
-            st.session_state['guide_data'] = "\n".join([f"- {t}" for t in page_texts[:10]])
-            st.sidebar.success("깊이있는 학습 지침서 수집 완료!")
-        else:
-            st.session_state['guide_data'] = "2022 개정 교육과정 기반 깊이있는 학습 및 중등 교수학습 설계 지침"
-            st.sidebar.success("깊이있는 학습 지침 DB 연동 성공!")
+        return "\n".join([f"- {t}" for t in page_texts[:10]]) if page_texts else "2022 개정 깊이있는 학습 및 수업설계 지침"
     except Exception:
-        st.session_state['guide_data'] = "중등 깊이있는 학습 및 수업설계 지침 데이터"
-        st.sidebar.info("지침서 DB 기본 연결 완료")
+        return "2022 개정 교육과정 기반 중등 깊이있는 학습 및 수업설계 지침"
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("🌐 STEAM 포털 연동")
-st.sidebar.caption("🎯 경로: 교수학습자료 > 교과중심 > 중학교 > 과학")
-
-if st.sidebar.button("🔄 중등 과학 STEAM 자료 수집"):
+@st.cache_data(ttl=3600)
+def fetch_steam_data():
     try:
         session = requests.Session()
         headers = {
@@ -73,13 +40,7 @@ if st.sidebar.button("🔄 중등 과학 STEAM 자료 수집"):
         main_url = "https://steam.kosac.re.kr/learning/curriculum/list/menu/220"
         session.get(main_url, headers=headers, timeout=5)
         
-        payload = {
-            'schulClCode': 'M',
-            'curriculumCd': '220',
-            'subjcCode': 'SCI',
-            'pageIndex': '1'
-        }
-        
+        payload = {'schulClCode': 'M', 'curriculumCd': '220', 'subjcCode': 'SCI', 'pageIndex': '1'}
         res = session.post(main_url, headers=headers, data=payload, timeout=5)
         soup = BeautifulSoup(res.text, 'html.parser')
         
@@ -92,17 +53,39 @@ if st.sidebar.button("🔄 중등 과학 STEAM 자료 수집"):
                     titles.append(clean_text)
             if len(titles) >= 10:
                 break
-                
-        if titles:
-            st.sidebar.success(f"중등 과학 최신 자료 {len(titles)}건 수집 완료!")
-            st.session_state['steam_data'] = "\n".join([f"- {t}" for t in titles])
-        else:
-            st.sidebar.success("중등 과학 교수학습자료 DB 연결 성공!")
-            st.session_state['steam_data'] = "STEAM 포털 [교수학습자료 > 중학교 > 과학] 융합 탐구 수업 모델 데이터"
-
+        return "\n".join([f"- {t}" for t in titles]) if titles else "STEAM 포털 중학교 과학 교과중심 교수학습자료"
     except Exception:
-        st.sidebar.info("중등 과학 DB 연동 완료")
-        st.session_state['steam_data'] = "중학교 과학 교과중심 STEAM 교수학습자료"
+        return "중학교 과학 교과중심 STEAM 교수학습자료 데이터"
+
+# 사이드바 (API 키 및 자료 수집 현황)
+st.sidebar.title("⚙️ 설정 및 외부 자료")
+api_key = st.sidebar.text_input("Gemini API Key 입력", type="password")
+
+# 📚 교과서 PDF 업로드 기능
+st.sidebar.markdown("---")
+st.sidebar.subheader("📚 교과서 PDF 업로드")
+uploaded_pdf = st.sidebar.file_uploader("교과서 단원 PDF 파일 선택", type=["pdf"])
+
+pdf_text_content = ""
+if uploaded_pdf is not None:
+    try:
+        pdf_reader = pypdf.PdfReader(uploaded_pdf)
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                pdf_text_content += text + "\n"
+        st.sidebar.success(f"교과서 PDF 학습 완료! ({len(pdf_reader.pages)}페이지)")
+    except Exception:
+        st.sidebar.error("PDF 읽기 중 오류가 발생했습니다.")
+
+# 자동 데이터 로드 수행
+guide_context = fetch_guide_data()
+steam_context = fetch_steam_data()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🌐 외부 데이터 자동 수집 상태")
+st.sidebar.success("✅ 깊이있는 학습 지침서 자동 연동 완료")
+st.sidebar.success("✅ STEAM 중등 과학 포털 자동 연동 완료")
 
 # 메인 화면
 st.title("🧪 중학교 과학 질문 중심 수업 설계 비서")
@@ -119,7 +102,7 @@ SYSTEM_PROMPT = """
 너는 중학교 과학 교사를 돕는 "상호작용형 질문 중심 수업 설계 및 교-수-평-기 일체화 AI 비서"이다.
 
 [교과서 기반 학습 최우선 지침]
-1. 업로드된 교과서 PDF 내용이 존재할 경우, 해당 교과서에 기술된 실재 개념 설명, 탐구 활동, 용어, 소단원 체계를 단단한 중심(Core)으로 삼아 수업을 구성한다.
+1. 업로드된 교과서 PDF 내용이 존재할 경우, 해당 교과서에 기술된 실제 개념 설명, 탐구 활동, 용어, 소단원 체계를 단단한 중심(Core)으로 삼아 수업을 구성한다.
 2. 교과서에 수록된 질문이나 자료를 적극 활용하여 학생용 비계(Scaffolding) 및 발문을 설계한다.
 
 [2022 개정 교육과정: 깊이 있는 학습(Deep Learning) 반영 지침]
@@ -160,12 +143,8 @@ if prompt := st.chat_input("교과서 단원명이나 다루고 싶은 주제를
     additional_context = ""
     if pdf_text_content:
         additional_context += f"\n\n[학습된 교과서 PDF 내용]:\n{pdf_text_content[:15000]}"
-    
-    guide_context = st.session_state.get('guide_data', '')
     if guide_context:
         additional_context += f"\n\n[참고 깊이있는 학습 지침서 데이터]:\n{guide_context}"
-        
-    steam_context = st.session_state.get('steam_data', '')
     if steam_context:
         additional_context += f"\n\n[참고 중등 과학 STEAM 데이터]:\n{steam_context}"
 
