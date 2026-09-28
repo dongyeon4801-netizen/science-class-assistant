@@ -20,13 +20,15 @@ FORBIDDEN = [
     "생각함", "흥미를", "노력함", "노력하", "성장함", "성장하",
     # 과장·AI 상투어
     "뛰어", "탁월", "우수", "역량", "잠재력", "인상적", "깊이 있는", "깊은 이해",
-    "남다른", "두각", "훌륭",
+    "남다른", "두각", "훌륭", "인상 깊", "인상깊", "할 수 있음", "예쁜", "사랑스러",
 ]
 NOT_ALLOWED = [
     # 기재요령상 기재 금지
     "수상", "대회", "올림피아드", "경시", "인증", "자격증", "토익", "토플", "텝스",
     "논문", "학회", "특허", "출판", "해외", "어학연수", "학원", "과외",
-    "아버지", "어머니", "부모님", "대학교",
+    "아버지", "어머니", "부모님", "대학교", "골든벨", "방과후",
+    # 건강·출결은 다른 란에 기록
+    "우울", "질병", "미인정", "결석", "지각한", "잦은 지각", "지각이 잦",
 ]
 UNITS = {"mL", "mm", "cm", "km", "kg", "mg", "pH", "Hz", "kPa", "hPa", "DNA", "RNA", "kJ", "kW", "kcal", "cal"}
 
@@ -79,6 +81,9 @@ def check_text(text):
         if w in text:
             warnings.append(f"기재 금지 확인 '{w}'")
 
+    for d in re.findall(r"\d{4}\.\d{2}\.\d{2}(?![.\d])", text):
+        warnings.append(f"날짜 끝 온점 누락: {d}")
+
     if "[?]" in text:
         warnings.append("판독 불확실 [?] 남음")
 
@@ -93,13 +98,16 @@ def normalize(sentence):
     return re.sub(r"\s+", "", sentence)
 
 
-def check_rows(rows):
-    """행마다 경고 목록을 붙이고, 같은 탭 안의 중복 문장도 표시한다."""
+def check_rows(rows, common=()):
+    """행마다 경고 목록을 붙이고, 같은 탭 안의 중복 문장도 표시한다.
+    common: 여러 학생에게 똑같이 들어가도 되는 공통 문구(행사목록)."""
+    common = {normalize(c) for c in common}
     seen = defaultdict(list)  # (탭, 문장) -> [학생 키]
     for row in rows:
         key = f"{row['학년']}-{row['반']}-{row['번호']}"
         for s in split_sentences(row.get("초안", "")):
-            seen[(row["탭"], normalize(s))].append(key)
+            if normalize(s) not in common:
+                seen[(row["탭"], normalize(s))].append(key)
 
     results = []
     for row in rows:
@@ -119,12 +127,18 @@ def main():
     parser = argparse.ArgumentParser(description="생기부 초안 자동 점검")
     parser.add_argument("csv")
     parser.add_argument("-o", "--output")
+    parser.add_argument("--common", help="중복 검사에서 뺄 공통 문구 파일 (한 줄에 한 문장)")
     args = parser.parse_args()
+
+    common = []
+    if args.common:
+        with open(args.common, encoding="utf-8-sig") as f:
+            common = [line.strip() for line in f if line.strip()]
 
     with open(args.csv, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
 
-    results = check_rows(rows)
+    results = check_rows(rows, common)
 
     if args.output:
         fields = list(rows[0].keys()) if rows else []
