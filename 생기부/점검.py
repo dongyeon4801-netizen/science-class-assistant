@@ -84,6 +84,9 @@ def check_text(text):
     for d in re.findall(r"\d{4}\.\d{2}\.\d{2}(?![.\d])", text):
         warnings.append(f"날짜 끝 온점 누락: {d}")
 
+    if any(q in text for q in "‘’“”"):
+        warnings.append("둥근 따옴표 → 키보드 따옴표(' \")로")
+
     if "[?]" in text:
         warnings.append("판독 불확실 [?] 남음")
 
@@ -113,6 +116,13 @@ def check_rows(rows, common=()):
     for row in rows:
         key = f"{row['학년']}-{row['반']}-{row['번호']}"
         warnings = check_text(row.get("초안", ""))
+        if row["탭"].startswith("행발"):
+            sentences = split_sentences(row.get("초안", ""))
+            for s in sentences[1:]:
+                if s.endswith("학생임."):
+                    warnings.append(f"성격 요약은 첫 문장만: …{s[-12:]}")
+            if any("기대" in s for s in sentences):
+                warnings.append("마무리 기대 문장 삭제")
         dup = set()
         for s in split_sentences(row.get("초안", "")):
             others = [k for k in seen[(row["탭"], normalize(s))] if k != key]
