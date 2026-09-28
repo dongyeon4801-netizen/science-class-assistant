@@ -4,3 +4,4 @@
 !생기부/문체샘플/README.md
 *.pdf
 __pycache__/
+*.zip
