@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>나이스 붙여넣기 도우미</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --ink: #1f2328; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2563eb; --accent-ink: #ffffff; --ok: #15803d; --ok-bg: #dcfce7; --warn: #b45309; --warn-bg: #fef3c7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --card: #1f2227; --ink: #e8eaed; --muted: #9aa0a6; --line: #33373d;
+      --accent: #60a5fa; --accent-ink: #0b1220; --ok: #4ade80; --ok-bg: #14301f; --warn: #fbbf24; --warn-bg: #3a2e10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  textarea { width: 100%; min-height: 120px; font: inherit; font-size: 13px; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button:disabled { opacity: .4; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .who { font-size: 44px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+  .area { display: inline-block; font-size: 14px; font-weight: 700; padding: 2px 10px; border-radius: 999px;
+    background: var(--warn-bg); color: var(--warn); margin-bottom: 8px; }
+  .text { white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 14px; margin: 12px 0; font-size: 15px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .status { min-height: 1.6em; font-weight: 700; }
+  .status.ok { color: var(--ok); }
+  .status.warn { color: var(--warn); }
+  .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0 0; }
+  .progress > div { height: 100%; background: var(--ok); width: 0; transition: width .2s; }
+  ol.list { margin: 0; padding-left: 0; list-style: none; max-height: 260px; overflow: auto; font-size: 14px; }
+  ol.list li { padding: 4px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; }
+  ol.list li.cur { background: var(--warn-bg); font-weight: 700; }
+  ol.list li.done { color: var(--muted); }
+  ol.list li.done::before { content: "✓"; color: var(--ok); }
+  ol.list li:not(.done)::before { content: "·"; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>나이스 붙여넣기 도우미</h1>
+  <p class="sub">시트 [입력용] 탭에서 받은 CSV를 열면, 번호 순서대로 한 명씩 클립보드에 올립니다. 인터넷 연결 없이 동작합니다.</p>
+
+  <section class="card" id="loadCard">
+    <div class="row" style="margin-bottom:12px">
+      <label><input type="file" id="file" accept=".csv,.tsv,.txt"></label>
+    </div>
+    <textarea id="paste" placeholder="또는 시트의 [입력용] 탭 내용을 (제목 행 포함) 복사해서 여기에 붙여넣기"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="loadBtn">불러오기</button>
+      <span class="meta" id="loadMsg"></span>
+    </div>
+  </section>
+
+  <section class="card hidden" id="workCard">
+    <span class="area" id="area"></span>
+    <div class="who" id="who"></div>
+    <div class="text" id="text"></div>
+    <div class="meta" id="meta"></div>
+    <div class="status" id="status"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="prevBtn">← 이전</button>
+      <button class="primary" id="copyBtn">복사하기</button>
+      <button id="nextBtn">다음 →</button>
+    </div>
+    <p class="meta" style="margin-top:12px">
+      <kbd>Enter</kbd> 복사 · <kbd>→</kbd> 다음 학생 복사 · <kbd>←</kbd> 이전 &nbsp;|&nbsp;
+      나이스에 붙여넣기 전에 <b>화면의 학생 번호와 나이스 선택 학생이 같은지</b> 꼭 확인하세요.
+    </p>
+    <div class="progress"><div id="bar"></div></div>
+  </section>
+
+  <section class="card hidden" id="listCard">
+    <div class="row" style="justify-content:space-between; margin-bottom:8px">
+      <b>전체 목록</b>
+      <button id="resetBtn">처음부터 다시</button>
+    </div>
+    <ol class="list" id="list"></ol>
+  </section>
+</main>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let items = [];
+  let cur = 0;
+  let done = new Set();
+  let storeKey = '';
+
+  function store(get, value) {
+    try {
+      if (get) return JSON.parse(localStorage.getItem(storeKey) || 'null');
+      localStorage.setItem(storeKey, JSON.stringify(value));
+    } catch (e) { return null; }
+  }
+
+  // 따옴표로 감싼 칸(줄바꿈·구분자 포함)을 처리하는 CSV/TSV 파서
+  function parse(text) {
+    text = text.replace(/^﻿/, '');
+    const firstLine = text.split(/\r?\n/)[0];
+    const sep = firstLine.includes('\t') ? '\t' : ',';
+    const rows = [];
+    let row = [], field = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; } else q = false;
+        } else field += ch;
+      } else if (ch === '"' && field === '') q = true;
+      else if (ch === sep) { row.push(field); field = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); rows.push(row); row = []; field = '';
+      } else field += ch;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim() !== ''));
+  }
+
+  function neisBytes(s) {
+    let b = 0;
+    for (const ch of s) b += ch === '\n' ? 2 : (ch.codePointAt(0) < 128 ? 1 : 3);
+    return b;
+  }
+
+  function load(text) {
+    const rows = parse(text);
+    if (rows.length < 2) { $('loadMsg').textContent = '내용이 없습니다.'; return; }
+    const head = rows[0].map(h => h.trim());
+    const col = h => head.indexOf(h);
+    const need = ['영역', '학년', '반', '번호', '최종본'];
+    const missing = need.filter(h => col(h) < 0);
+    if (missing.length) { $('loadMsg').textContent = '열이 없습니다: ' + missing.join(', ') + ' (제목 행까지 복사했는지 확인)'; return; }
+    items = rows.slice(1).map(r => ({
+      area: r[col('영역')], g: r[col('학년')], c: r[col('반')], n: r[col('번호')], text: (r[col('최종본')] || '').trim(),
+    })).filter(it => it.text);
+    if (!items.length) { $('loadMsg').textContent = '최종본이 있는 행이 없습니다.'; return; }
+
+    storeKey = 'neis-helper:' + items.length + ':' + items.map(i => i.area + i.g + i.c + i.n).join('|').slice(0, 300);
+    const saved = store(true);
+    done = new Set(saved && saved.done || []);
+    cur = saved && Number.isInteger(saved.cur) && saved.cur < items.length ? saved.cur : 0;
+
+    $('loadMsg').textContent = items.length + '명을 불러왔습니다.';
+    $('workCard').classList.remove('hidden');
+    $('listCard').classList.remove('hidden');
+    render();
+  }
+
+  function render() {
+    const it = items[cur];
+    $('area').textContent = it.area;
+    $('who').textContent = it.g + '학년 ' + it.c + '반 ' + it.n + '번';
+    $('text').textContent = it.text;
+    const b = neisBytes(it.text);
+    $('meta').textContent = (cur + 1) + ' / ' + items.length + ' · ' + b + '바이트' + (b > 1500 ? ' (1500 초과!)' : '');
+    $('status').textContent = done.has(cur) ? '이미 복사한 학생입니다.' : '';
+    $('status').className = 'status' + (done.has(cur) ? ' warn' : '');
+    $('prevBtn').disabled = cur === 0;
+    $('nextBtn').disabled = cur === items.length - 1;
+    $('bar').style.width = (done.size / items.length * 100) + '%';
+
+    const list = $('list');
+    list.innerHTML = '';
+    items.forEach((x, i) => {
+      const li = document.createElement('li');
+      li.textContent = x.area + ' ' + x.g + '-' + x.c + '-' + x.n;
+      if (i === cur) li.classList.add('cur');
+      if (done.has(i)) li.classList.add('done');
+      li.onclick = () => { cur = i; save(); render(); };
+      list.appendChild(li);
+    });
+    const curLi = list.children[cur];
+    if (curLi) curLi.scrollIntoView({ block: 'nearest' });
+  }
+
+  function save() { store(false, { cur, done: [...done] }); }
+
+  async function copy() {
+    const it = items[cur];
+    let ok = false;
+    try { await navigator.clipboard.writeText(it.text); ok = true; } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = it.text; document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+      ta.remove();
+    }
+    if (ok) {
+      done.add(cur); save(); render();
+      $('status').textContent = '복사됨 → 나이스에서 ' + it.g + '-' + it.c + '-' + it.n + ' 학생 칸에 Ctrl+V';
+      $('status').className = 'status ok';
+    } else {
+      $('status').textContent = '복사 실패: 본문을 직접 드래그해서 복사하세요.';
+      $('status').className = 'status warn';
+    }
+  }
+
+  $('loadBtn').onclick = () => load($('paste').value);
+  $('file').onchange = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => load(r.result);
+    r.readAsText(f, 'utf-8');
+  };
+  $('copyBtn').onclick = copy;
+  // 화면을 먼저 다음 학생으로 바꾼 뒤 복사해야, 화면 번호와 클립보드 내용이 어긋나는 순간이 없다
+  $('nextBtn').onclick = () => { if (cur < items.length - 1) { cur++; save(); render(); copy(); } };
+  $('prevBtn').onclick = () => { if (cur > 0) { cur--; save(); render(); } };
+  $('resetBtn').onclick = () => { done = new Set(); cur = 0; save(); render(); };
+  document.addEventListener('keydown', e => {
+    if (!items.length || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'Enter') { e.preventDefault(); copy(); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); $('nextBtn').click(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); $('prevBtn').click(); }
+  });
+})();
+</script>
+</body>
+</html>
